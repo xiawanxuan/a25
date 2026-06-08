@@ -93,6 +93,62 @@
         </div>
 
         <div class="panel">
+          <h2>✨ 星轨拖尾增强</h2>
+          <div class="control-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="trailEnabled" style="width: auto; cursor: pointer;">
+              <span>启用拖尾增强</span>
+            </label>
+          </div>
+          <div class="control-group">
+            <label>拖尾强度: <span id="trailIntensityValue">100</span>%</label>
+            <input type="range" id="trailIntensity" min="50" max="300" value="100">
+          </div>
+          <div class="control-group">
+            <label>发光强度: <span id="trailGlowValue">30</span>%</label>
+            <input type="range" id="trailGlow" min="0" max="100" value="30">
+          </div>
+          <div class="control-group">
+            <label>星轨粗细: <span id="trailThicknessValue">1</span>px</label>
+            <input type="range" id="trailThickness" min="1" max="10" value="1" step="0.5">
+          </div>
+          <button id="applyTrailEnhance" class="btn btn-secondary" disabled>应用拖尾增强</button>
+        </div>
+
+        <div class="panel">
+          <h2>🌌 银河背景叠加</h2>
+          <div class="upload-area" id="bgUploadArea" style="padding: 12px; margin-bottom: 10px;">
+            <input type="file" id="bgFileInput" accept=".jpg,.jpeg,.png,.raw,.cr2,.nef,.arw,.dng" hidden>
+            <div class="upload-content">
+              <div class="upload-icon" style="font-size: 24px;">🌠</div>
+              <p style="font-size: 11px;">点击选择银河背景照片</p>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>叠加模式</label>
+            <select id="bgBlendMode">
+              <option value="lighten">变亮</option>
+              <option value="screen">滤色</option>
+              <option value="overlay">叠加</option>
+              <option value="normal">正常</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>背景透明度: <span id="bgOpacityValue">100</span>%</label>
+            <input type="range" id="bgOpacity" min="0" max="100" value="100">
+          </div>
+          <div class="control-group">
+            <label>背景亮度: <span id="bgBrightnessValue">0</span></label>
+            <input type="range" id="bgBrightness" min="-100" max="100" value="0">
+          </div>
+          <div class="control-group">
+            <label>背景对比度: <span id="bgContrastValue">0</span></label>
+            <input type="range" id="bgContrast" min="-100" max="100" value="0">
+          </div>
+          <button id="applyBgBlend" class="btn btn-secondary" disabled>应用背景叠加</button>
+        </div>
+
+        <div class="panel">
           <h2>🌓 前景/背景分离</h2>
           <div class="control-group">
             <label>星轨阈值: <span id="thresholdValue">30</span></label>
@@ -110,7 +166,36 @@
         </div>
 
         <div class="panel">
-          <h2>💾 导出</h2>
+          <h2>💾 批量导出</h2>
+          <div class="control-group">
+            <label>导出分辨率</label>
+            <div class="checkbox-list" id="exportPresetList">
+              <label class="checkbox-item">
+                <input type="checkbox" value="original" checked>
+                <span>原图尺寸</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" value="4k" checked>
+                <span>4K (3840×2160)</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" value="2k">
+                <span>2K (2560×1440)</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" value="fhd">
+                <span>全高清 (1920×1080)</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" value="hd">
+                <span>高清 (1280×720)</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" value="social">
+                <span>社交媒体 (1080×1080)</span>
+              </label>
+            </div>
+          </div>
           <div class="control-group">
             <label>导出格式</label>
             <select id="exportFormat">
@@ -122,7 +207,7 @@
             <label>导出质量: <span id="qualityValue">95</span>%</label>
             <input type="range" id="exportQuality" min="10" max="100" value="95">
           </div>
-          <button id="exportBtn" class="btn btn-success" disabled>📥 导出结果</button>
+          <button id="exportBtn" class="btn btn-success" disabled>📥 批量导出</button>
         </div>
       </aside>
     </div>

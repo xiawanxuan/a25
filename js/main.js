@@ -30,6 +30,25 @@ class StarTrailApp {
     this.lastAlignResults = null;
     this.isProcessing = false;
     
+    this.trailEnhance = {
+      enabled: false,
+      intensity: 100,
+      glow: 30,
+      thickness: 1,
+      applied: false,
+      originalBeforeTrail: null
+    };
+    
+    this.backgroundImage = null;
+    this.bgSettings = {
+      mode: 'lighten',
+      opacity: 100,
+      brightness: 0,
+      contrast: 0,
+      applied: false,
+      originalBeforeBg: null
+    };
+    
     this._initElements();
     this._initPreviewer();
     this._bindEvents();
@@ -62,6 +81,27 @@ class StarTrailApp {
     this.backgroundValue = document.getElementById('backgroundValue');
     this.applySeparationBtn = document.getElementById('applySeparation');
     
+    this.trailEnabled = document.getElementById('trailEnabled');
+    this.trailIntensity = document.getElementById('trailIntensity');
+    this.trailIntensityValue = document.getElementById('trailIntensityValue');
+    this.trailGlow = document.getElementById('trailGlow');
+    this.trailGlowValue = document.getElementById('trailGlowValue');
+    this.trailThickness = document.getElementById('trailThickness');
+    this.trailThicknessValue = document.getElementById('trailThicknessValue');
+    this.applyTrailEnhanceBtn = document.getElementById('applyTrailEnhance');
+    
+    this.bgUploadArea = document.getElementById('bgUploadArea');
+    this.bgFileInput = document.getElementById('bgFileInput');
+    this.bgBlendMode = document.getElementById('bgBlendMode');
+    this.bgOpacity = document.getElementById('bgOpacity');
+    this.bgOpacityValue = document.getElementById('bgOpacityValue');
+    this.bgBrightness = document.getElementById('bgBrightness');
+    this.bgBrightnessValue = document.getElementById('bgBrightnessValue');
+    this.bgContrast = document.getElementById('bgContrast');
+    this.bgContrastValue = document.getElementById('bgContrastValue');
+    this.applyBgBlendBtn = document.getElementById('applyBgBlend');
+    
+    this.exportPresetList = document.getElementById('exportPresetList');
     this.exportFormat = document.getElementById('exportFormat');
     this.exportQuality = document.getElementById('exportQuality');
     this.qualityValue = document.getElementById('qualityValue');
@@ -149,6 +189,48 @@ class StarTrailApp {
     });
     
     this.applySeparationBtn.addEventListener('click', () => this._toggleSeparation());
+    
+    this.trailIntensity.addEventListener('input', () => {
+      this.trailIntensityValue.textContent = this.trailIntensity.value;
+    });
+    
+    this.trailGlow.addEventListener('input', () => {
+      this.trailGlowValue.textContent = this.trailGlow.value;
+    });
+    
+    this.trailThickness.addEventListener('input', () => {
+      this.trailThicknessValue.textContent = this.trailThickness.value;
+    });
+    
+    this.applyTrailEnhanceBtn.addEventListener('click', () => this._toggleTrailEnhance());
+    
+    if (this.bgUploadArea) {
+      this.bgUploadArea.addEventListener('click', () => this.bgFileInput.click());
+      this.bgFileInput.addEventListener('change', (e) => this._handleBackgroundFile(e.target.files));
+    }
+    
+    this.bgOpacity.addEventListener('input', () => {
+      this.bgOpacityValue.textContent = this.bgOpacity.value;
+      if (this.bgSettings.applied) {
+        this._applyBackgroundBlend();
+      }
+    });
+    
+    this.bgBrightness.addEventListener('input', () => {
+      this.bgBrightnessValue.textContent = this.bgBrightness.value;
+      if (this.bgSettings.applied) {
+        this._applyBackgroundBlend();
+      }
+    });
+    
+    this.bgContrast.addEventListener('input', () => {
+      this.bgContrastValue.textContent = this.bgContrast.value;
+      if (this.bgSettings.applied) {
+        this._applyBackgroundBlend();
+      }
+    });
+    
+    this.applyBgBlendBtn.addEventListener('click', () => this._toggleBackgroundBlend());
     
     this.exportQuality.addEventListener('input', () => {
       this.qualityValue.textContent = this.exportQuality.value;
@@ -265,10 +347,18 @@ class StarTrailApp {
       this.stackBtn.disabled = true;
       this.exportBtn.disabled = true;
       this.applySeparationBtn.disabled = true;
+      this.applyTrailEnhanceBtn.disabled = true;
+      this.applyBgBlendBtn.disabled = true;
       this.resultCanvas = null;
       this.resultImageData = null;
       this.previewer.clear();
       this._updateImageInfo(0, 0, 0);
+      
+      this.trailEnhance.applied = false;
+      this.trailEnhance.originalBeforeTrail = null;
+      this.bgSettings.applied = false;
+      this.bgSettings.originalBeforeBg = null;
+      this.backgroundImage = null;
     }
     
     this._updateStatus(`剩余 ${this.images.length} 张照片`);
@@ -329,6 +419,13 @@ class StarTrailApp {
       
       this.exportBtn.disabled = false;
       this.applySeparationBtn.disabled = false;
+      this.applyTrailEnhanceBtn.disabled = false;
+      
+      this.trailEnhance.applied = false;
+      this.trailEnhance.originalBeforeTrail = null;
+      this.bgSettings.applied = false;
+      this.bgSettings.originalBeforeBg = null;
+      this.applyBgBlendBtn.disabled = !this.backgroundImage;
       
       this._updateImageInfo(result.width, result.height, this.images.length);
       
@@ -445,20 +542,219 @@ class StarTrailApp {
     return result.imageData;
   }
   
+  _toggleTrailEnhance() {
+    if (!this.resultCanvas || !this.originalResult) return;
+    
+    if (this.trailEnhance.applied) {
+      this.trailEnhance.applied = false;
+      this.applyTrailEnhanceBtn.textContent = '应用拖尾增强';
+      this._refreshResultImage();
+      this._updateStatus('已取消拖尾增强');
+    } else {
+      this._applyTrailEnhance();
+    }
+  }
+  
+  _applyTrailEnhance() {
+    if (!this.originalResult) return;
+    
+    const baseImage = this._getBaseResultImage();
+    
+    const options = {
+      trailIntensity: parseInt(this.trailIntensity.value),
+      trailGlow: parseInt(this.trailGlow.value),
+      trailThickness: parseFloat(this.trailThickness.value),
+      brightnessBoost: 0,
+      contrastBoost: 0
+    };
+    
+    const result = StarStacker.enhanceStarTrail(baseImage, options);
+    
+    this.trailEnhance.applied = true;
+    this.applyTrailEnhanceBtn.textContent = '取消拖尾增强';
+    
+    const ctx = this.resultCanvas.getContext('2d');
+    ctx.putImageData(result.imageData, 0, 0);
+    this.resultImageData = result.imageData;
+    
+    ImageProcessor.adjustAll(this.resultImageData, this.adjustments);
+    ctx.putImageData(this.resultImageData, 0, 0);
+    
+    this.previewer.setImage(this.resultCanvas);
+    this._updateStatus('已应用拖尾增强效果');
+  }
+  
+  async _handleBackgroundFile(fileList) {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    
+    try {
+      const parsed = await ImageParser.parseFile(files[0]);
+      this.backgroundImage = parsed;
+      
+      this._updateStatus(`已加载背景: ${parsed.name} (${parsed.width}×${parsed.height})`);
+      
+      if (this.resultCanvas) {
+        this.applyBgBlendBtn.disabled = false;
+      }
+    } catch (err) {
+      console.error('背景加载失败:', err);
+      this._updateStatus('背景加载失败: ' + err.message);
+    }
+  }
+  
+  _toggleBackgroundBlend() {
+    if (!this.resultCanvas || !this.backgroundImage) return;
+    
+    if (this.bgSettings.applied) {
+      this.bgSettings.applied = false;
+      this.applyBgBlendBtn.textContent = '应用背景叠加';
+      this._refreshResultImage();
+      this._updateStatus('已取消背景叠加');
+    } else {
+      this._applyBackgroundBlend();
+    }
+  }
+  
+  _applyBackgroundBlend() {
+    if (!this.originalResult || !this.backgroundImage) return;
+    
+    const baseImage = this._getBaseResultImage();
+    
+    const fittedBg = ImageProcessor.fitBackgroundToForeground(
+      this.backgroundImage.imageData,
+      baseImage
+    );
+    
+    const adjustedBg = ImageProcessor.adjustBackground(fittedBg.imageData, {
+      brightness: parseInt(this.bgBrightness.value),
+      contrast: parseInt(this.bgContrast.value)
+    });
+    
+    const result = ImageProcessor.blendWithBackground(
+      baseImage,
+      adjustedBg,
+      {
+        mode: this.bgBlendMode.value,
+        opacity: parseInt(this.bgOpacity.value) / 100,
+        foregroundOpacity: 1
+      }
+    );
+    
+    this.bgSettings.applied = true;
+    this.applyBgBlendBtn.textContent = '取消背景叠加';
+    
+    const ctx = this.resultCanvas.getContext('2d');
+    ctx.putImageData(result.imageData, 0, 0);
+    this.resultImageData = result.imageData;
+    
+    ImageProcessor.adjustAll(this.resultImageData, this.adjustments);
+    ctx.putImageData(this.resultImageData, 0, 0);
+    
+    this.previewer.setImage(this.resultCanvas);
+    this._updateStatus('已应用银河背景叠加');
+  }
+  
+  _getBaseResultImage() {
+    let baseImage = this.originalResult;
+    
+    if (this.separation.applied) {
+      const starIntensity = parseInt(this.foregroundIntensity.value) / 100;
+      const bgIntensity = parseInt(this.backgroundIntensity.value) / 100;
+      const result = ImageProcessor.blendStarBackground(
+        this.separation.starLayer,
+        this.separation.bgLayer,
+        starIntensity,
+        bgIntensity
+      );
+      baseImage = result.imageData;
+    }
+    
+    if (this.trailEnhance.applied) {
+      const options = {
+        trailIntensity: parseInt(this.trailIntensity.value),
+        trailGlow: parseInt(this.trailGlow.value),
+        trailThickness: parseFloat(this.trailThickness.value)
+      };
+      const result = StarStacker.enhanceStarTrail(baseImage, options);
+      baseImage = result.imageData;
+    }
+    
+    return ImageProcessor.cloneImageData(baseImage);
+  }
+  
+  _refreshResultImage() {
+    if (!this.originalResult) return;
+    
+    const baseImage = this._getBaseResultImage();
+    
+    if (this.bgSettings.applied && this.backgroundImage) {
+      const fittedBg = ImageProcessor.fitBackgroundToForeground(
+        this.backgroundImage.imageData,
+        baseImage
+      );
+      const adjustedBg = ImageProcessor.adjustBackground(fittedBg.imageData, {
+        brightness: parseInt(this.bgBrightness.value),
+        contrast: parseInt(this.bgContrast.value)
+      });
+      const blended = ImageProcessor.blendWithBackground(
+        baseImage,
+        adjustedBg,
+        {
+          mode: this.bgBlendMode.value,
+          opacity: parseInt(this.bgOpacity.value) / 100,
+          foregroundOpacity: 1
+        }
+      );
+      this.resultImageData = blended.imageData;
+    } else {
+      this.resultImageData = ImageProcessor.cloneImageData(baseImage);
+    }
+    
+    ImageProcessor.adjustAll(this.resultImageData, this.adjustments);
+    
+    const ctx = this.resultCanvas.getContext('2d');
+    ctx.putImageData(this.resultImageData, 0, 0);
+    this.previewer.setImage(this.resultCanvas);
+  }
+  
   _exportResult() {
     if (!this.resultCanvas) return;
+    
+    const selectedPresets = [];
+    const checkboxes = this.exportPresetList.querySelectorAll('input[type="checkbox"]:checked');
+    checkboxes.forEach(cb => selectedPresets.push(cb.value));
+    
+    if (selectedPresets.length === 0) {
+      this._updateStatus('请至少选择一个导出分辨率');
+      return;
+    }
     
     const format = this.exportFormat.value;
     const quality = parseInt(this.exportQuality.value) / 100;
     
-    const dataUrl = ImageProcessor.exportCanvas(this.resultCanvas, format, quality);
+    this._showLoading('正在生成导出文件...');
     
-    const ext = format === 'jpeg' ? 'jpg' : 'png';
-    const filename = `star-trail-${Date.now()}.${ext}`;
-    
-    ImageProcessor.downloadImage(dataUrl, filename);
-    
-    this._updateStatus(`已导出: ${filename}`);
+    try {
+      const results = ImageProcessor.batchExport(this.resultCanvas, {
+        presets: selectedPresets,
+        format: format,
+        quality: quality,
+        filenamePrefix: `star-trail-${Date.now()}`,
+        onProgress: (current, total, name) => {
+          this._updateLoadingText(`正在导出 ${current + 1}/${total}: ${name}`);
+        }
+      });
+      
+      ImageProcessor.downloadBatchExport(results);
+      
+      this._updateStatus(`已批量导出 ${results.length} 个版本`);
+    } catch (err) {
+      console.error('导出失败:', err);
+      this._updateStatus('导出失败: ' + err.message);
+    } finally {
+      this._hideLoading();
+    }
   }
   
   _updateStatus(text) {

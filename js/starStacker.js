@@ -327,11 +327,227 @@ const StarStacker = (() => {
     };
   }
 
+  function enhanceStarTrail(imageData, options = {}) {
+    const {
+      trailIntensity = 100,
+      trailGlow = 0,
+      trailThickness = 1,
+      brightnessBoost = 0,
+      contrastBoost = 0
+    } = options;
+
+    const width = imageData.width;
+    const height = imageData.height;
+    const pixelCount = width * height;
+    
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = width;
+    resultCanvas.height = height;
+    const ctx = resultCanvas.getContext('2d');
+    
+    let resultImageData = cloneImageDataInternal(imageData);
+    const resultData = resultImageData.data;
+    
+    const intensityFactor = trailIntensity / 100;
+    
+    if (trailThickness > 1 || trailGlow > 0) {
+      resultImageData = applyTrailGlow(resultImageData, trailGlow, trailThickness);
+    }
+    
+    if (brightnessBoost !== 0 || contrastBoost !== 0 || intensityFactor !== 1) {
+      const data = resultImageData.data;
+      
+      const contrastFactor = contrastBoost !== 0 ? 
+        (259 * (contrastBoost + 255)) / (255 * (259 - contrastBoost)) : 1;
+      const brightnessVal = brightnessBoost * 2.55;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+        
+        const brightness = (r + g + b) / 3;
+        if (brightness > 30) {
+          r = r * intensityFactor;
+          g = g * intensityFactor;
+          b = b * intensityFactor;
+        }
+        
+        if (brightnessVal !== 0) {
+          r += brightnessVal;
+          g += brightnessVal;
+          b += brightnessVal;
+        }
+        
+        if (contrastFactor !== 1) {
+          r = contrastFactor * (r - 128) + 128;
+          g = contrastFactor * (g - 128) + 128;
+          b = contrastFactor * (b - 128) + 128;
+        }
+        
+        data[i] = clampValue(r);
+        data[i + 1] = clampValue(g);
+        data[i + 2] = clampValue(b);
+      }
+    }
+    
+    ctx.putImageData(resultImageData, 0, 0);
+    
+    return {
+      imageData: resultImageData,
+      canvas: resultCanvas,
+      width,
+      height
+    };
+  }
+
+  function applyTrailGlow(imageData, glowIntensity, thickness) {
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = width;
+    resultCanvas.height = height;
+    const ctx = resultCanvas.getContext('2d');
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(tempCanvas, 0, 0);
+    
+    if (glowIntensity > 0 || thickness > 1) {
+      const blurRadius = Math.max(thickness - 1, glowIntensity / 10);
+      
+      if (blurRadius > 0) {
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = width;
+        glowCanvas.height = height;
+        const glowCtx = glowCanvas.getContext('2d');
+        
+        glowCtx.filter = `blur(${blurRadius}px)`;
+        glowCtx.drawImage(tempCanvas, 0, 0);
+        
+        const glowOpacity = (glowIntensity / 100) * 0.7 + 0.3;
+        ctx.globalAlpha = glowOpacity;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.drawImage(glowCanvas, 0, 0);
+        
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(tempCanvas, 0, 0);
+      }
+    }
+    
+    return ctx.getImageData(0, 0, width, height);
+  }
+
+  function createMotionBlurTrail(imageData, options = {}) {
+    const {
+      angle = 45,
+      length = 10,
+      intensity = 50
+    } = options;
+
+    const width = imageData.width;
+    const height = imageData.height;
+    const srcData = imageData.data;
+    
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = width;
+    resultCanvas.height = height;
+    const ctx = resultCanvas.getContext('2d');
+    const resultImageData = ctx.createImageData(width, height);
+    const resultData = resultImageData.data;
+    
+    const angleRad = angle * Math.PI / 180;
+    const dx = Math.cos(angleRad);
+    const dy = Math.sin(angleRad);
+    const steps = Math.max(1, Math.floor(length));
+    const intensityFactor = intensity / 100;
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        
+        let sumR = srcData[idx] * 0.5;
+        let sumG = srcData[idx + 1] * 0.5;
+        let sumB = srcData[idx + 2] * 0.5;
+        let weightSum = 0.5;
+        
+        for (let s = 1; s <= steps; s++) {
+          const offsetX = dx * s * 0.5;
+          const offsetY = dy * s * 0.5;
+          
+          const sampleX = Math.floor(x + offsetX);
+          const sampleY = Math.floor(y + offsetY);
+          const sampleX2 = Math.floor(x - offsetX);
+          const sampleY2 = Math.floor(y - offsetY);
+          
+          const weight = (1 - s / steps) * 0.25;
+          
+          if (sampleX >= 0 && sampleX < width && sampleY >= 0 && sampleY < height) {
+            const sIdx = (sampleY * width + sampleX) * 4;
+            sumR += srcData[sIdx] * weight;
+            sumG += srcData[sIdx + 1] * weight;
+            sumB += srcData[sIdx + 2] * weight;
+            weightSum += weight;
+          }
+          
+          if (sampleX2 >= 0 && sampleX2 < width && sampleY2 >= 0 && sampleY2 < height) {
+            const sIdx2 = (sampleY2 * width + sampleX2) * 4;
+            sumR += srcData[sIdx2] * weight;
+            sumG += srcData[sIdx2 + 1] * weight;
+            sumB += srcData[sIdx2 + 2] * weight;
+            weightSum += weight;
+          }
+        }
+        
+        const finalR = srcData[idx] * (1 - intensityFactor * 0.5) + (sumR / weightSum) * intensityFactor * 0.5;
+        const finalG = srcData[idx + 1] * (1 - intensityFactor * 0.5) + (sumG / weightSum) * intensityFactor * 0.5;
+        const finalB = srcData[idx + 2] * (1 - intensityFactor * 0.5) + (sumB / weightSum) * intensityFactor * 0.5;
+        
+        resultData[idx] = clampValue(finalR);
+        resultData[idx + 1] = clampValue(finalG);
+        resultData[idx + 2] = clampValue(finalB);
+        resultData[idx + 3] = srcData[idx + 3];
+      }
+    }
+    
+    ctx.putImageData(resultImageData, 0, 0);
+    
+    return {
+      imageData: resultImageData,
+      canvas: resultCanvas,
+      width,
+      height
+    };
+  }
+
+  function cloneImageDataInternal(imageData) {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    const ctx = canvas.getContext('2d');
+    const newImageData = ctx.createImageData(imageData.width, imageData.height);
+    newImageData.data.set(imageData.data);
+    return newImageData;
+  }
+
+  function clampValue(value) {
+    return Math.max(0, Math.min(255, Math.round(value)));
+  }
+
   return {
     BLEND_MODES,
     stackImages,
     createStarTrailEffect,
-    stackWeighted
+    stackWeighted,
+    enhanceStarTrail,
+    createMotionBlurTrail
   };
 })();
 

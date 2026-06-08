@@ -329,6 +329,301 @@ const ImageProcessor = (() => {
     document.body.removeChild(link);
   }
 
+  function blendWithBackground(foregroundData, backgroundData, options = {}) {
+    const {
+      mode = 'lighten',
+      opacity = 1,
+      foregroundOpacity = 1
+    } = options;
+
+    const width = foregroundData.width;
+    const height = foregroundData.height;
+    
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = width;
+    resultCanvas.height = height;
+    const ctx = resultCanvas.getContext('2d');
+    const resultImageData = ctx.createImageData(width, height);
+    const result = resultImageData.data;
+    
+    const fgPixels = foregroundData.data;
+    const bgPixels = backgroundData.data;
+    
+    for (let i = 0; i < result.length; i += 4) {
+      const fgR = fgPixels[i] / 255;
+      const fgG = fgPixels[i + 1] / 255;
+      const fgB = fgPixels[i + 2] / 255;
+      const fgA = (fgPixels[i + 3] / 255) * foregroundOpacity;
+      
+      const bgR = bgPixels[i] / 255;
+      const bgG = bgPixels[i + 1] / 255;
+      const bgB = bgPixels[i + 2] / 255;
+      const bgA = (bgPixels[i + 3] / 255) * opacity;
+      
+      let r, g, b, a;
+      
+      switch (mode) {
+        case 'screen':
+          r = 1 - (1 - fgR) * (1 - bgR);
+          g = 1 - (1 - fgG) * (1 - bgG);
+          b = 1 - (1 - fgB) * (1 - bgB);
+          break;
+          
+        case 'multiply':
+          r = fgR * bgR;
+          g = fgG * bgG;
+          b = fgB * bgB;
+          break;
+          
+        case 'overlay':
+          r = bgR < 0.5 ? 2 * fgR * bgR : 1 - 2 * (1 - fgR) * (1 - bgR);
+          g = bgG < 0.5 ? 2 * fgG * bgG : 1 - 2 * (1 - fgG) * (1 - bgG);
+          b = bgB < 0.5 ? 2 * fgB * bgB : 1 - 2 * (1 - fgB) * (1 - bgB);
+          break;
+          
+        case 'normal':
+          r = fgR * fgA + bgR * (1 - fgA);
+          g = fgG * fgA + bgG * (1 - fgA);
+          b = fgB * fgA + bgB * (1 - fgA);
+          break;
+          
+        case 'lighten':
+        default:
+          r = Math.max(fgR, bgR);
+          g = Math.max(fgG, bgG);
+          b = Math.max(fgB, bgB);
+          break;
+      }
+      
+      a = Math.max(fgA, bgA);
+      
+      result[i] = clamp(r * 255);
+      result[i + 1] = clamp(g * 255);
+      result[i + 2] = clamp(b * 255);
+      result[i + 3] = clamp(a * 255);
+    }
+    
+    ctx.putImageData(resultImageData, 0, 0);
+    
+    return {
+      imageData: resultImageData,
+      canvas: resultCanvas,
+      width,
+      height
+    };
+  }
+
+  function resizeImageData(imageData, targetWidth, targetHeight) {
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = imageData.width;
+    srcCanvas.height = imageData.height;
+    srcCanvas.getContext('2d').putImageData(imageData, 0, 0);
+    
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(srcCanvas, 0, 0, targetWidth, targetHeight);
+    
+    return {
+      imageData: ctx.getImageData(0, 0, targetWidth, targetHeight),
+      canvas: canvas,
+      width: targetWidth,
+      height: targetHeight
+    };
+  }
+
+  function fitBackgroundToForeground(bgImageData, fgImageData) {
+    const fgRatio = fgImageData.width / fgImageData.height;
+    const bgRatio = bgImageData.width / bgImageData.height;
+    
+    let targetWidth, targetHeight;
+    
+    if (bgRatio > fgRatio) {
+      targetHeight = fgImageData.height;
+      targetWidth = Math.round(targetHeight * bgRatio);
+    } else {
+      targetWidth = fgImageData.width;
+      targetHeight = Math.round(targetWidth / bgRatio);
+    }
+    
+    const resized = resizeImageData(bgImageData, targetWidth, targetHeight);
+    
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = fgImageData.width;
+    resultCanvas.height = fgImageData.height;
+    const ctx = resultCanvas.getContext('2d');
+    
+    const offsetX = Math.round((fgImageData.width - targetWidth) / 2);
+    const offsetY = Math.round((fgImageData.height - targetHeight) / 2);
+    
+    ctx.drawImage(resized.canvas, offsetX, offsetY);
+    
+    return {
+      imageData: ctx.getImageData(0, 0, fgImageData.width, fgImageData.height),
+      canvas: resultCanvas,
+      width: fgImageData.width,
+      height: fgImageData.height,
+      offsetX,
+      offsetY
+    };
+  }
+
+  const EXPORT_PRESETS = [
+    { name: '原图尺寸', width: 0, height: 0, suffix: '' },
+    { name: '4K (3840×2160)', width: 3840, height: 2160, suffix: '-4k' },
+    { name: '2K (2560×1440)', width: 2560, height: 1440, suffix: '-2k' },
+    { name: '全高清 (1920×1080)', width: 1920, height: 1080, suffix: '-fhd' },
+    { name: '高清 (1280×720)', width: 1280, height: 720, suffix: '-hd' },
+    { name: '社交媒体 (1080×1080)', width: 1080, height: 1080, suffix: '-social' },
+    { name: '4K竖版 (2160×3840)', width: 2160, height: 3840, suffix: '-4k-portrait' },
+    { name: '自定义尺寸', width: -1, height: -1, suffix: '-custom' }
+  ];
+
+  function batchExport(canvas, options = {}) {
+    const {
+      presets = ['original', '4k', 'fhd'],
+      format = 'png',
+      quality = 0.95,
+      filenamePrefix = 'star-trail',
+      onProgress = null
+    } = options;
+
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
+    const originalRatio = originalWidth / originalHeight;
+    
+    const results = [];
+    const allPresets = getExportPresetList();
+    
+    const selectedPresets = allPresets.filter(p => presets.includes(p.key) || presets.includes(p.name));
+    
+    for (let i = 0; i < selectedPresets.length; i++) {
+      const preset = selectedPresets[i];
+      
+      if (onProgress) {
+        onProgress(i, selectedPresets.length, preset.name);
+      }
+      
+      let targetWidth, targetHeight;
+      
+      if (preset.width === 0 && preset.height === 0) {
+        targetWidth = originalWidth;
+        targetHeight = originalHeight;
+      } else {
+        const presetRatio = preset.width / preset.height;
+        
+        if (originalRatio > presetRatio) {
+          targetWidth = preset.width;
+          targetHeight = Math.round(preset.width / originalRatio);
+        } else {
+          targetHeight = preset.height;
+          targetWidth = Math.round(preset.height * originalRatio);
+        }
+      }
+      
+      const resizedCanvas = document.createElement('canvas');
+      resizedCanvas.width = targetWidth;
+      resizedCanvas.height = targetHeight;
+      const ctx = resizedCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+      
+      const dataUrl = exportCanvas(resizedCanvas, format, quality);
+      const ext = format === 'jpeg' ? 'jpg' : 'png';
+      const filename = `${filenamePrefix}${preset.suffix}.${ext}`;
+      
+      results.push({
+        name: preset.name,
+        width: targetWidth,
+        height: targetHeight,
+        dataUrl,
+        filename,
+        size: Math.round(dataUrl.length * 0.75)
+      });
+    }
+    
+    return results;
+  }
+
+  function downloadBatchExport(results) {
+    results.forEach((result, index) => {
+      setTimeout(() => {
+        downloadImage(result.dataUrl, result.filename);
+      }, index * 500);
+    });
+  }
+
+  function getExportPresetList() {
+    return [
+      { key: 'original', name: '原图尺寸', width: 0, height: 0, suffix: '' },
+      { key: '4k', name: '4K (3840×2160)', width: 3840, height: 2160, suffix: '-4k' },
+      { key: '2k', name: '2K (2560×1440)', width: 2560, height: 1440, suffix: '-2k' },
+      { key: 'fhd', name: '全高清 (1920×1080)', width: 1920, height: 1080, suffix: '-fhd' },
+      { key: 'hd', name: '高清 (1280×720)', width: 1280, height: 720, suffix: '-hd' },
+      { key: 'social', name: '社交媒体 (1080×1080)', width: 1080, height: 1080, suffix: '-social' },
+      { key: '4k-portrait', name: '4K竖版 (2160×3840)', width: 2160, height: 3840, suffix: '-4k-portrait' }
+    ];
+  }
+
+  function adjustBackground(imageData, options = {}) {
+    const {
+      brightness = 0,
+      contrast = 0,
+      saturation = 0,
+      maskThreshold = null
+    } = options;
+
+    const result = cloneImageData(imageData);
+    const data = result.data;
+    
+    const brightnessVal = brightness * 2.55;
+    const contrastFactor = contrast !== 0 ? 
+      (259 * (contrast + 255)) / (255 * (259 - contrast)) : 1;
+    const sat = saturation / 100;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i];
+      let g = data[i + 1];
+      let b = data[i + 2];
+      
+      const pixelBrightness = (r + g + b) / 3;
+      
+      if (maskThreshold !== null && pixelBrightness > maskThreshold) {
+        continue;
+      }
+      
+      if (brightnessVal !== 0) {
+        r += brightnessVal;
+        g += brightnessVal;
+        b += brightnessVal;
+      }
+      
+      if (contrastFactor !== 1) {
+        r = contrastFactor * (r - 128) + 128;
+        g = contrastFactor * (g - 128) + 128;
+        b = contrastFactor * (b - 128) + 128;
+      }
+      
+      if (sat !== 0) {
+        const gray = 0.2989 * r + 0.587 * g + 0.114 * b;
+        r = gray + sat * (r - gray);
+        g = gray + sat * (g - gray);
+        b = gray + sat * (b - gray);
+      }
+      
+      data[i] = clamp(r);
+      data[i + 1] = clamp(g);
+      data[i + 2] = clamp(b);
+    }
+    
+    return result;
+  }
+
   return {
     adjustBrightness,
     adjustContrast,
@@ -342,7 +637,14 @@ const ImageProcessor = (() => {
     autoLevels,
     gaussianBlur,
     exportCanvas,
-    downloadImage
+    downloadImage,
+    blendWithBackground,
+    resizeImageData,
+    fitBackgroundToForeground,
+    batchExport,
+    downloadBatchExport,
+    getExportPresetList,
+    adjustBackground
   };
 })();
 
