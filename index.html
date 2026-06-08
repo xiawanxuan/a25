@@ -45,6 +45,15 @@
             <label>叠加强度: <span id="intensityValue">100</span>%</label>
             <input type="range" id="intensity" min="1" max="200" value="100">
           </div>
+          <div class="control-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="autoAlign" checked style="width: auto; cursor: pointer;">
+              <span>自动对齐恒星</span>
+            </label>
+            <p style="font-size: 11px; color: #666; margin-top: 4px;">
+              基于星点特征匹配，自动校正位移和旋转
+            </p>
+          </div>
           <button id="stackBtn" class="btn btn-primary" disabled>🎯 开始合成</button>
         </div>
       </aside>

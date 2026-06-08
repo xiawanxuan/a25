@@ -26,6 +26,8 @@ class StarTrailApp {
       bgLayer: null
     };
     
+    this.autoAlignEnabled = true;
+    this.lastAlignResults = null;
     this.isProcessing = false;
     
     this._initElements();
@@ -42,6 +44,7 @@ class StarTrailApp {
     this.blendMode = document.getElementById('blendMode');
     this.intensity = document.getElementById('intensity');
     this.intensityValue = document.getElementById('intensityValue');
+    this.autoAlign = document.getElementById('autoAlign');
     this.stackBtn = document.getElementById('stackBtn');
     
     this.brightness = document.getElementById('brightness');
@@ -103,6 +106,12 @@ class StarTrailApp {
     this.intensity.addEventListener('input', () => {
       this.intensityValue.textContent = this.intensity.value;
     });
+    
+    if (this.autoAlign) {
+      this.autoAlign.addEventListener('change', () => {
+        this.autoAlignEnabled = this.autoAlign.checked;
+      });
+    }
     
     this.stackBtn.addEventListener('click', () => this._stackImages());
     
@@ -275,8 +284,8 @@ class StarTrailApp {
     
     this.isProcessing = true;
     this.stackBtn.disabled = true;
-    this._updateStatus('正在合成星轨...');
-    this._showLoading();
+    this._updateStatus('正在对齐恒星并合成星轨...');
+    this._showLoading('正在检测恒星特征点...');
     
     try {
       const imageDataList = this.images.map(img => 
@@ -285,16 +294,24 @@ class StarTrailApp {
       
       const options = {
         mode: this.blendMode.value,
-        intensity: parseInt(this.intensity.value)
+        intensity: parseInt(this.intensity.value),
+        align: this.autoAlignEnabled,
+        referenceIndex: 0,
+        onProgress: (phase, current, total) => {
+          if (phase === 'aligning') {
+            this._updateLoadingText(`正在对齐第 ${current + 1}/${total} 张照片...`);
+          } else if (phase === 'stacking') {
+            this._updateLoadingText('正在合成星轨...');
+          }
+        }
       };
       
-      await this._delay(50);
-      
-      const result = StarStacker.stackImages(imageDataList, options);
+      const result = await StarStacker.stackImages(imageDataList, options);
       
       this.resultCanvas = result.canvas;
       this.resultImageData = result.imageData;
       this.originalResult = ImageProcessor.cloneImageData(result.imageData);
+      this.lastAlignResults = result.alignResults;
       
       this.separation.applied = false;
       this.separation.starLayer = null;
@@ -314,7 +331,13 @@ class StarTrailApp {
       this.applySeparationBtn.disabled = false;
       
       this._updateImageInfo(result.width, result.height, this.images.length);
-      this._updateStatus('星轨合成完成！');
+      
+      if (result.aligned && result.alignResults) {
+        const avgError = result.alignResults.reduce((sum, r) => sum + (r.alignError || 0), 0) / result.alignResults.length;
+        this._updateStatus(`合成完成！已自动对齐，平均误差: ${avgError.toFixed(2)} 像素`);
+      } else {
+        this._updateStatus('星轨合成完成！');
+      }
     } catch (err) {
       console.error('合成失败:', err);
       this._updateStatus('合成失败: ' + err.message);
@@ -450,21 +473,39 @@ class StarTrailApp {
     }
   }
   
-  _showLoading() {
+  _showLoading(text = '处理中...') {
     const existing = document.querySelector('.loading-overlay');
-    if (existing) return;
+    if (existing) {
+      this._updateLoadingText(text);
+      return;
+    }
     
     const overlay = document.createElement('div');
     overlay.className = 'loading-overlay';
     overlay.innerHTML = `
       <div class="spinner"></div>
-      <div class="loading-text">处理中...</div>
+      <div class="loading-text">${text}</div>
+      <div class="loading-progress"></div>
     `;
     
     const container = document.querySelector('.canvas-wrapper');
     if (container) {
       container.style.position = 'relative';
       container.appendChild(overlay);
+    }
+  }
+  
+  _updateLoadingText(text) {
+    const loadingText = document.querySelector('.loading-text');
+    if (loadingText) {
+      loadingText.textContent = text;
+    }
+  }
+  
+  _updateLoadingProgress(text) {
+    const loadingProgress = document.querySelector('.loading-progress');
+    if (loadingProgress) {
+      loadingProgress.textContent = text;
     }
   }
   

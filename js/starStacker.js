@@ -1,4 +1,6 @@
-// 星轨合成模块 - 多种叠加合成算法
+// 星轨合成模块 - 多种叠加合成算法（含自动对齐）
+import ImageAligner from './imageAligner.js';
+
 const StarStacker = (() => {
   const BLEND_MODES = {
     LIGHTEN: 'lighten',
@@ -7,17 +9,44 @@ const StarStacker = (() => {
     AVERAGE: 'average'
   };
 
-  function stackImages(imageDataList, options = {}) {
+  async function stackImages(imageDataList, options = {}) {
     if (!imageDataList || imageDataList.length === 0) {
       throw new Error('没有可合成的图像');
     }
 
     const mode = options.mode || BLEND_MODES.LIGHTEN;
     const intensity = (options.intensity || 100) / 100;
+    const enableAlign = options.align !== false;
+    const referenceIndex = options.referenceIndex || 0;
+    const onProgress = options.onProgress || null;
     
     const firstImg = imageDataList[0];
     const width = firstImg.width;
     const height = firstImg.height;
+    
+    let alignedImages = imageDataList;
+    let alignResults = null;
+    
+    if (enableAlign && imageDataList.length > 1) {
+      if (onProgress) onProgress('aligning', 0, imageDataList.length);
+      
+      alignResults = ImageAligner.alignImageList(imageDataList, {
+        referenceIndex,
+        onProgress: (current, total) => {
+          if (onProgress) onProgress('aligning', current, total);
+        },
+        detectionOptions: {
+          threshold: 15,
+          minArea: 2,
+          maxArea: 100,
+          maxStars: 200
+        }
+      });
+      
+      alignedImages = alignResults.map(r => r.imageData);
+    }
+    
+    if (onProgress) onProgress('stacking', 0, alignedImages.length);
     
     const resultCanvas = document.createElement('canvas');
     resultCanvas.width = width;
@@ -29,17 +58,17 @@ const StarStacker = (() => {
     
     switch (mode) {
       case BLEND_MODES.MAX:
-        stackMax(imageDataList, resultData, width, height, intensity);
+        stackMax(alignedImages, resultData, width, height, intensity);
         break;
       case BLEND_MODES.SCREEN:
-        stackScreen(imageDataList, resultData, width, height, intensity);
+        stackScreen(alignedImages, resultData, width, height, intensity);
         break;
       case BLEND_MODES.AVERAGE:
-        stackAverage(imageDataList, resultData, width, height, intensity);
+        stackAverage(alignedImages, resultData, width, height, intensity);
         break;
       case BLEND_MODES.LIGHTEN:
       default:
-        stackLighten(imageDataList, resultData, width, height, intensity);
+        stackLighten(alignedImages, resultData, width, height, intensity);
         break;
     }
     
@@ -49,7 +78,9 @@ const StarStacker = (() => {
       imageData: resultImageData,
       canvas: resultCanvas,
       width: width,
-      height: height
+      height: height,
+      alignResults: alignResults,
+      aligned: enableAlign && imageDataList.length > 1
     };
   }
 
